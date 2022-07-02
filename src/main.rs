@@ -1,7 +1,7 @@
 #![no_main]
 
 use std::{
-    io::{BufReader, Read, Result, Write},
+    io::{Read, Result, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     thread::{available_parallelism, spawn},
 };
@@ -36,9 +36,7 @@ fn listen_task(listener: TcpListener) {
     }
 }
 
-fn handle(stream: TcpStream) -> Result<()> {
-    let mut buffer = BufReader::new(stream);
-
+fn handle(mut stream: TcpStream) -> Result<()> {
     let mut buf = vec![0; BUFFER_SIZE];
     let mut bytes_read = 0;
 
@@ -46,18 +44,18 @@ fn handle(stream: TcpStream) -> Result<()> {
         let mut headers = [httparse::EMPTY_HEADER; 16];
         let mut req = httparse::Request::new(&mut headers);
 
-        let read = buffer.read(&mut buf[bytes_read..])?;
+        let read = stream.read(&mut buf[bytes_read..])?;
         bytes_read += read;
 
         if let Ok(res) = req.parse(&buf) {
             if res.is_complete() {
-                buffer.into_inner().write_all(OK)?;
+                stream.write_all(OK)?;
                 break;
             } else {
                 continue;
             }
         } else {
-            buffer.into_inner().write_all(BAD_REQUEST)?;
+            stream.write_all(BAD_REQUEST)?;
             break;
         };
     }
