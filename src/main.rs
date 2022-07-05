@@ -2,7 +2,7 @@
 
 use std::{
     io::{Read, Result, Write},
-    net::{SocketAddr, TcpListener, TcpStream},
+    net::{SocketAddr, TcpListener},
     thread::{available_parallelism, spawn},
 };
 
@@ -26,38 +26,36 @@ pub fn main(_argc: i32, _argv: *const *const u8) {
     }
 
     for thread in threads {
-        thread.join().unwrap();
+        thread.join().unwrap().unwrap();
     }
 }
 
-fn listen_task(listener: TcpListener) {
-    for stream in listener.incoming().flatten() {
-        let _ = handle(stream);
-    }
-}
-
-fn handle(mut stream: TcpStream) -> Result<()> {
+fn listen_task(listener: TcpListener) -> Result<()> {
     let mut buf = vec![0; BUFFER_SIZE];
     let mut bytes_read = 0;
 
-    loop {
-        let mut headers = [httparse::EMPTY_HEADER; 16];
-        let mut req = httparse::Request::new(&mut headers);
+    for mut stream in listener.incoming().flatten() {
+        loop {
+            let mut headers = [httparse::EMPTY_HEADER; 16];
+            let mut req = httparse::Request::new(&mut headers);
 
-        let read = stream.read(&mut buf[bytes_read..])?;
-        bytes_read += read;
+            bytes_read += stream.read(&mut buf[bytes_read..])?;
 
-        if let Ok(res) = req.parse(&buf) {
-            if res.is_complete() {
-                stream.write_all(OK)?;
-                break;
+            if let Ok(res) = req.parse(&buf[..bytes_read]) {
+                if res.is_complete() {
+                    stream.write_all(OK)?;
+                    break;
+                }
             } else {
-                continue;
-            }
-        } else {
-            stream.write_all(BAD_REQUEST)?;
-            break;
-        };
+                stream.write_all(BAD_REQUEST)?;
+                break;
+            };
+        }
+
+        // Since we reuse buf, we do not care about the contents
+        // left over from previous reads, all we want to do is
+        // start writing again!
+        bytes_read = 0;
     }
 
     Ok(())
